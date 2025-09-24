@@ -2,7 +2,6 @@
 
 import os
 from dataclasses import dataclass, field, fields
-from typing import Optional
 
 from typing_extensions import Annotated
 
@@ -16,51 +15,66 @@ class Context:
     user_id: str = "default"
     """The ID of the user to remember in the conversation."""
 
-    # Custom LLM Configuration - loaded from environment variables
-    model_name: str = field(default_factory=lambda: os.getenv("MODEL_NAME", "Qwen/Qwen3-30B-A3B"))
-    """The model name to use for the custom LLM."""
+    # Custom LLM Configuration
+    llm_api_key: str = field(
+        default="a",
+        metadata={"description": "API key for the custom LLM endpoint"}
+    )
     
-    llm_api_key: str = field(default_factory=lambda: os.getenv("LLM_API_KEY", ""))
-    """API key for the custom LLM endpoint."""
+    llm_base_url: str = field(
+        default="https://inference-instance-qwen3-30b-ust2hkbr.ai.gcore.dev",
+        metadata={"description": "Base URL for the custom LLM API"}
+    )
     
-    llm_base_url: str = field(default_factory=lambda: os.getenv("LLM_BASE_URL", "https://inference-instance-qwen3-30b-ust2hkbr.ai.gcore.dev/v1"))
-    """Base URL for the custom LLM endpoint."""
+    llm_model_name: str = field(
+        default="Qwen/Qwen3-30B-A3B",
+        metadata={"description": "Name of the custom LLM model"}
+    )
     
-    llm_extra_headers: Optional[dict] = field(default=None)
-    """Extra headers to send with requests to the custom LLM."""
+    llm_temperature: float = field(
+        default=0.7,
+        metadata={"description": "Temperature for LLM generation"}
+    )
     
-    # Custom Embeddings Configuration - loaded from environment variables
-    embedding_model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "Alibaba-NLP/gte-Qwen2-1.5B-instruct"))
-    """The embedding model name to use."""
+    llm_max_tokens: int = field(
+        default=1000,
+        metadata={"description": "Maximum tokens for LLM generation"}
+    )
+
+    # Custom Embeddings Configuration
+    embed_api_key: str = field(
+        default="Y0DNDULH6SJskvTl",
+        metadata={"description": "API key for the custom embedding endpoint"}
+    )
     
-    embedding_api_key: str = field(default_factory=lambda: os.getenv("EMBEDDING_API_KEY", ""))
-    """API key for the custom embedding endpoint."""
+    embed_base_url: str = field(
+        default="https://inference-instance-gte-qwen2-ust2hkbr.ai.gcore.dev/v1/embeddings",
+        metadata={"description": "Base URL for the custom embedding API"}
+    )
     
-    embedding_base_url: str = field(default_factory=lambda: os.getenv("EMBEDDING_BASE_URL", "https://inference-instance-gte-qwen2-ust2hkbr.ai.gcore.dev/v1/embeddings"))
-    """Base URL for the custom embedding endpoint."""
-    
-    # Legacy model field for compatibility (deprecated)
+    embed_model_name: str = field(
+        default="Alibaba-NLP/gte-Qwen2-1.5B-instruct",
+        metadata={"description": "Name of the custom embedding model"}
+    )
+
+    # Legacy model field (kept for compatibility but not used with custom models)
     model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
         default="custom/qwen3-30b",
         metadata={
-            "description": "Legacy model field. Use model_name, llm_api_key, and llm_base_url instead."
+            "description": "The name of the language model to use for the agent. "
+            "Should be in the form: provider/model-name."
         },
     )
 
     system_prompt: str = prompts.SYSTEM_PROMPT
 
     def __post_init__(self):
-        """Post-initialization setup and environment variable handling."""
-        
-        # Set up extra headers with API key from environment
-        if self.llm_extra_headers is None:
-            x_api_key = os.getenv("X_API_KEY") or self.llm_api_key
-            if x_api_key:
-                self.llm_extra_headers = {"X-API-Key": x_api_key}
-            else:
-                self.llm_extra_headers = {}
-        
-        # CRITICAL: Set dummy OPENAI_API_KEY if not present (required for LangGraph platform)
-        # This prevents the OpenAI initialization error without affecting our custom endpoints
-        if not os.environ.get("OPENAI_API_KEY"):
-            os.environ["OPENAI_API_KEY"] = "sk-dummy-key-for-langgraph-platform-compatibility"
+        """Fetch env vars for attributes that were not passed as args."""
+        for f in fields(self):
+            if not f.init:
+                continue
+
+            if getattr(self, f.name) == f.default:
+                # Map field names to environment variable names
+                env_var_name = f.name.upper()
+                setattr(self, f.name, os.environ.get(env_var_name, f.default))
