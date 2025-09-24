@@ -19,13 +19,13 @@ logger = logging.getLogger(__name__)
 # ✅ Initialize the chat model using OpenAI-compatible endpoint
 llm = init_chat_model()
 
-
 async def call_model(state: State, runtime: Runtime[Context]) -> dict:
-    """Extract the user's state from the conversation and update the memory."""
     ctx = runtime.context
     user_id = ctx.user_id
-    model = ctx.model
     system_prompt = ctx.system_prompt
+
+    # Get GCore chat model
+    llm = ctx.get_chat()
 
     # Retrieve memories
     memories = await cast(BaseStore, runtime.store).asearch(
@@ -34,7 +34,6 @@ async def call_model(state: State, runtime: Runtime[Context]) -> dict:
         limit=10,
     )
 
-    # Format them into a string
     formatted = "\n".join(
         f"[{mem.key}]: {mem.value} (similarity: {mem.score})"
         for mem in memories
@@ -42,15 +41,10 @@ async def call_model(state: State, runtime: Runtime[Context]) -> dict:
     if formatted:
         formatted = f"<memories>\n{formatted}\n</memories>"
 
-    sys = system_prompt.format(
-        user_info=formatted,
-        time=datetime.now().isoformat(),
-    )
+    sys = system_prompt.format(user_info=formatted, time=datetime.now().isoformat())
 
-    # ✅ Call the LLM with OpenAI-compatible API
     msg = await llm.bind_tools([tools.upsert_memory]).ainvoke(
         [{"role": "system", "content": sys}, *state.messages],
-        context=utils.split_model_and_provider(model),
     )
 
     return {"messages": [msg]}
