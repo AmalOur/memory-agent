@@ -49,7 +49,7 @@ async def call_model(state: State, runtime: Runtime[Context]) -> dict:
     return {"messages": [AIMessage(content=content)]}
 <memories>
 {formatted}
-</memories>"""
+</memories>
 
     # Prepare the system prompt with user memories and current time
     # This helps the model understand the context and temporal relevance
