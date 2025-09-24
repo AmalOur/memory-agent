@@ -82,7 +82,16 @@ builder.add_edge("__start__", "call_model")
 builder.add_node(store_memory)
 builder.add_conditional_edges("call_model", route_message, ["store_memory", END])
 builder.add_edge("store_memory", "call_model")
+
 graph = builder.compile()
 graph.name = "MemoryAgent"
+
+# ✅ Inject GCore embeddings into the store
+def get_runtime(runtime):
+    embedder = runtime.context.get_embedder()
+    runtime.store.set_embeddings(embedder)
+    return runtime
+
+graph.get_runtime = get_runtime
 
 __all__ = ["graph"]
