@@ -2,6 +2,7 @@
 
 import os
 from dataclasses import dataclass, field, fields
+from typing import Optional
 
 from typing_extensions import Annotated
 
@@ -15,11 +16,24 @@ class Context:
     user_id: str = "default"
     """The ID of the user to remember in the conversation."""
 
+    # Custom LLM Configuration
+    model_name: str = "Qwen/Qwen3-30B-A3B"
+    """The model name to use for the custom LLM."""
+    
+    llm_api_key: str = "a"
+    """API key for the custom LLM endpoint."""
+    
+    llm_base_url: str = "https://inference-instance-qwen3-30b-ust2hkbr.ai.gcore.dev/v1"
+    """Base URL for the custom LLM endpoint."""
+    
+    llm_extra_headers: Optional[dict] = field(default_factory=lambda: {"X-API-Key": "a"})
+    """Extra headers to send with requests to the custom LLM."""
+    
+    # Legacy model field for compatibility (deprecated)
     model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
-        default="anthropic/claude-3-5-sonnet-20240620",
+        default="custom/qwen3-30b",
         metadata={
-            "description": "The name of the language model to use for the agent. "
-            "Should be in the form: provider/model-name."
+            "description": "Legacy model field. Use model_name, llm_api_key, and llm_base_url instead."
         },
     )
 
@@ -32,4 +46,11 @@ class Context:
                 continue
 
             if getattr(self, f.name) == f.default:
-                setattr(self, f.name, os.environ.get(f.name.upper(), f.default))
+                # Map environment variable names
+                env_name = f.name.upper()
+                setattr(self, f.name, os.environ.get(env_name, f.default))
+        
+        # Handle special case for extra headers
+        if self.llm_extra_headers == {"X-API-Key": "a"}:
+            # Update X-API-Key with the actual API key
+            self.llm_extra_headers = {"X-API-Key": self.llm_api_key}

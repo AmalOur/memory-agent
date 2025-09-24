@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from typing import cast
 
-from langchain.chat_models import init_chat_model
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
@@ -16,15 +16,34 @@ from memory_agent.state import State
 
 logger = logging.getLogger(__name__)
 
-# Initialize the language model to be used for memory extraction
-llm = init_chat_model()
+# LLM will be initialized per-request using runtime context
+llm = None
+
+
+def get_custom_llm(runtime: Runtime[Context]) -> ChatOpenAI:
+    """Initialize a custom LLM using the runtime context."""
+    context = runtime.context
+    
+    # Create ChatOpenAI with custom endpoint configuration
+    custom_llm = ChatOpenAI(
+        model=context.model_name,
+        api_key=context.llm_api_key,
+        base_url=context.llm_base_url,
+        default_headers=context.llm_extra_headers or {},
+        temperature=0.7,  # You can make this configurable too
+        max_tokens=1000,  # You can make this configurable too
+    )
+    
+    return custom_llm
 
 
 async def call_model(state: State, runtime: Runtime[Context]) -> dict:
     """Extract the user's state from the conversation and update the memory."""
     user_id = runtime.context.user_id
-    model = runtime.context.model
     system_prompt = runtime.context.system_prompt
+    
+    # Initialize the custom LLM
+    llm = get_custom_llm(runtime)
 
     # Retrieve the most recent memories for context
     memories = await cast(BaseStore, runtime.store).asearch(
@@ -50,11 +69,17 @@ async def call_model(state: State, runtime: Runtime[Context]) -> dict:
     # Invoke the language model with the prepared prompt and tools
     # "bind_tools" gives the LLM the JSON schema for all tools in the list so it knows how
     # to use them.
-    msg = await llm.bind_tools([tools.upsert_memory]).ainvoke(
-        [{"role": "system", "content": sys}, *state.messages],
-        context=utils.split_model_and_provider(model),
-    )
-    return {"messages": [msg]}
+    try:
+        msg = await llm.bind_tools([tools.upsert_memory]).ainvoke(
+            [{"role": "system", "content": sys}, *state.messages]
+        )
+        return {"messages": [msg]}
+    except Exception as e:
+        logger.error(f"Error calling custom LLM: {e}")
+        # Return a fallback message
+        from langchain_core.messages import AIMessage
+        fallback_msg = AIMessage(content=f"I apologize, but I encountered an error while processing your message: {str(e)}")
+        return {"messages": [fallback_msg]}
 
 
 async def store_memory(state: State, runtime: Runtime[Context]):
