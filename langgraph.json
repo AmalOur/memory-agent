@@ -9,7 +9,7 @@
     "store": {
         "index": {
             "dims": 1536,
-            "embed": "openai:text-embedding-3-small"
+            "embed": "custom:Alibaba-NLP/gte-Qwen2-1.5B-instruct"
         }
     }
 }

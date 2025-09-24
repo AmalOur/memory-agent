@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from typing import cast
 
+from langchain.chat_models import init_chat_model
 from langgraph.graph import END, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
@@ -12,43 +13,39 @@ from langgraph.store.base import BaseStore
 from memory_agent import tools, utils
 from memory_agent.context import Context
 from memory_agent.state import State
-from memory_agent.custom_models import CustomChatModel
 
 logger = logging.getLogger(__name__)
 
-
-def get_llm(context: Context) -> CustomChatModel:
-    """Initialize the custom language model from context."""
-    return CustomChatModel(
-        api_key=context.llm_api_key,
-        base_url=context.llm_base_url,
-        model_name=context.llm_model_name,
-        temperature=context.llm_temperature,
-        max_tokens=context.llm_max_tokens,
-    )
-
-
 async def call_model(state: State, runtime: Runtime[Context]) -> dict:
     """Extract the user's state from the conversation and update the memory."""
-    user_id = runtime.context.user_id
-    system_prompt = runtime.context.system_prompt
+    ctx = runtime.context
+    user_id = ctx.user_id
+    model = ctx.model
+    system_prompt = ctx.system_prompt
 
-    # Initialize the custom LLM for this runtime
-    llm = get_llm(runtime.context)
-
-    # Retrieve the most recent memories for context
+    # Memories
     memories = await cast(BaseStore, runtime.store).asearch(
         ("memories", user_id),
         query=str([m.content for m in state.messages[-3:]]),
         limit=10,
     )
-
-    # Format memories for inclusion in the prompt
     formatted = "\n".join(
         f"[{mem.key}]: {mem.value} (similarity: {mem.score})" for mem in memories
     )
     if formatted:
-        formatted = f"""
+        formatted = f"<memories>\n{formatted}\n</memories>"
+
+    sys = system_prompt.format(user_info=formatted, time=datetime.now().isoformat())
+
+    # Custom LLM call
+    content = utils.call_custom_llm(
+        api_url=ctx.llm_api,
+        api_key=ctx.llm_key,
+        model=model.split("/", 1)[-1],  # strip "custom/"
+        messages=[{"role": "system", "content": sys}, *state.messages],
+    )
+
+    return {"messages": [{"role": "assistant", "content": content}]}
 <memories>
 {formatted}
 </memories>"""
@@ -61,7 +58,8 @@ async def call_model(state: State, runtime: Runtime[Context]) -> dict:
     # "bind_tools" gives the LLM the JSON schema for all tools in the list so it knows how
     # to use them.
     msg = await llm.bind_tools([tools.upsert_memory]).ainvoke(
-        [{"role": "system", "content": sys}, *state.messages]
+        [{"role": "system", "content": sys}, *state.messages],
+        context=utils.split_model_and_provider(model),
     )
     return {"messages": [msg]}
 
