@@ -38,3 +38,27 @@ def call_custom_embeddings(api_url: str, api_key: str, model: str, text: str) ->
     resp = requests.post(f"{api_url}/embeddings", json=payload, headers=headers, timeout=60)
     resp.raise_for_status()
     return resp.json()["data"][0]["embedding"]
+
+
+from langgraph.store.embeddings import Embeddings
+
+class CustomEmbeddings(Embeddings):
+    """Adapter for custom embeddings."""
+
+    def __init__(self, api_url: str, api_key: str, model: str):
+        self.api_url = api_url
+        self.api_key = api_key
+        self.model = model
+
+    async def aembed(self, text: str):
+        # async wrapper around sync utils.call_custom_embeddings
+        import asyncio
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: call_custom_embeddings(self.api_url, self.api_key, self.model, text),
+        )
+
+    def embed(self, text: str):
+        # direct sync fallback
+        return call_custom_embeddings(self.api_url, self.api_key, self.model, text)

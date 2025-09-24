@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from typing import cast
 
+from langchain_core.messages import AIMessage
 from langchain.chat_models import init_chat_model
 from langgraph.graph import END, StateGraph
 from langgraph.runtime import Runtime
@@ -45,7 +46,7 @@ async def call_model(state: State, runtime: Runtime[Context]) -> dict:
         messages=[{"role": "system", "content": sys}, *state.messages],
     )
 
-    return {"messages": [{"role": "assistant", "content": content}]}
+    return {"messages": [AIMessage(content=content)]}
 <memories>
 {formatted}
 </memories>"""

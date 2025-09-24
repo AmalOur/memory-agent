@@ -34,3 +34,13 @@ class Context:
                 continue
             if getattr(self, f.name) == f.default:
                 setattr(self, f.name, os.environ.get(f.name.upper(), f.default))
+
+    def get_embedder(self):
+        """Return the embedder object configured in context."""
+        if self.embed_model.startswith("Alibaba-NLP") or self.embed_api:
+            return CustomEmbeddings(
+                api_url=self.embed_api,
+                api_key=self.embed_key,
+                model=self.embed_model,
+            )
+        return None 
